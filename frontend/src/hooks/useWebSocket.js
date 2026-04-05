@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 export function useWebSocket(url) {
   const [lastMessage, setLastMessage] = useState(null);
-  const [connected, setConnected]     = useState(false);
+  const [connected, setConnected]   = useState(false);
+  const [connecting, setConnecting] = useState(true);
+  const [retryDelay, setRetryDelay] = useState(null);
+
   const wsRef       = useRef(null);
   const retryCount  = useRef(0);
   const retryTimer  = useRef(null);
@@ -19,7 +22,8 @@ export function useWebSocket(url) {
     ws.onopen = () => {
       console.log("WebSocket connected");
       setConnected(true);
-      // reset retry count on successful connection
+      setConnecting(false);
+      setRetryDelay(null);
       retryCount.current = 0;
     };
 
@@ -34,18 +38,14 @@ export function useWebSocket(url) {
 
     ws.onclose = () => {
       setConnected(false);
-      console.log("WebSocket disconnected — will retry...");
-
-      // exponential backoff — wait longer after each failed attempt
-      // 1s, 2s, 4s, 8s, 16s, capped at 30s
+      setConnecting(false);
       const delay = Math.min(1000 * 2 ** retryCount.current, 30000);
       retryCount.current += 1;
-
+      setRetryDelay(delay / 1000);
       console.log(`retrying in ${delay / 1000}s (attempt ${retryCount.current})`);
-
-      // schedule the next connection attempt
       retryTimer.current = setTimeout(connect, delay);
     };
+
 
     ws.onerror = (err) => {
       console.error("WebSocket error", err);
@@ -64,5 +64,5 @@ export function useWebSocket(url) {
     };
   }, [connect]);
 
-  return { lastMessage, connected };
+  return { lastMessage, connected, connecting, retryDelay };
 }

@@ -6,10 +6,25 @@ import { useWebSocket } from "./hooks/useWebSocket";
 
 export default function App() {
   // single WebSocket connection shared across all four panels
-  const { lastMessage, connected } = useWebSocket("ws://localhost:8080/ws");
+  const { lastMessage, connected, connecting, retryDelay } = useWebSocket("ws://localhost:8080/ws");
 
   return (
     <div style={styles.page}>
+
+      {/* connecting spinner — shown on first load before WS handshake */}
+      {connecting && (
+        <div style={styles.banner}>
+          <span style={styles.spinner}>⟳</span>
+          Connecting to StreamPulse backend...
+        </div>
+      )}
+
+      {/* disconnected banner — shown when backend goes down */}
+      {!connecting && !connected && (
+        <div style={{ ...styles.banner, ...styles.errorBanner }}>
+          ⚠ Backend unavailable — retrying in {retryDelay}s...
+        </div>
+      )}
 
       {/* header */}
       <div style={styles.header}>
@@ -76,5 +91,25 @@ const styles = {
   topRow:    { marginBottom: 16 },
   midRow:    { marginBottom: 16 },
   bottomRow: { display: "flex", gap: 16 },
-  half:      { flex: 1, minWidth: 0 },
+  half: { flex: 1, minWidth: 0 },
+  banner: {
+    background:   "#f9e2af",
+    color:        "#1e1e2e",
+    borderRadius: 8,
+    padding:      "10px 16px",
+    marginBottom: 16,
+    fontSize:     14,
+    fontWeight:   500,
+    display:      "flex",
+    alignItems:   "center",
+    gap:          8,
+  },
+  errorBanner: {
+    background: "#f38ba8",
+  },
+  spinner: {
+    display:         "inline-block",
+    animation:       "spin 1s linear infinite",
+    fontSize:        18,
+  },
 };

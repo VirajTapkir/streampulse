@@ -2,8 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,19 +19,29 @@ import (
 )
 
 func main() {
+	// configure slog to write structured logs to stdout
+	// this is what AWS CloudWatch will capture in production
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo, // show INFO and above — debug logs are hidden
+	}))
+	slog.SetDefault(logger)
+
 	// load .env
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+		slog.Error("failed to load .env file", "err", err)
+		os.Exit(1)
 	}
 
 	// connect to PostgreSQL
 	if err := db.InitPostgres(); err != nil {
-		log.Fatalf("Postgres error: %v", err)
+		slog.Error("postgres init failed", "err", err)
+		os.Exit(1)
 	}
 
 	// connect to Redis
 	if err := db.InitRedis(); err != nil {
-		log.Fatalf("Redis error: %v", err)
+		slog.Error("redis init failed", "err", err)
+		os.Exit(1)
 	}
 
 	// create the WebSocket hub and start its main loop
@@ -42,75 +51,56 @@ func main() {
 	// start the mock event queue
 	eventChan := events.StartEventQueue()
 
-	// process events — saves to DB, updates Redis, broadcasts to clients
+	// process events
 	go hub.ProcessEvents(eventChan)
 
-	// start the momentum score ticker
+	// start momentum ticker
 	scoring.StartMomentumTicker(hub.GetBroadcast())
 
-	// set up a ServeMux so we can wrap ALL routes with CORS at once
+	// set up routes
 	mux := http.NewServeMux()
-
-	// REST API routes
 	mux.HandleFunc("/api/streamers", api.GetStreamers)
 	mux.HandleFunc("/api/earnings",  api.GetEarnings)
 	mux.HandleFunc("/api/counters",  ws.GetCounters)
 	mux.HandleFunc("/api/momentum",  api.GetMomentum)
-
-	// health check endpoint — AWS ECS uses this to verify the container is alive
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})
-
-	// WebSocket route
 	mux.HandleFunc("/ws", hub.ServeWS)
 
-	// wrap the entire mux with CORS middleware
-	// every single request now gets CORS headers automatically
 	handler := middleware.CORS(mux)
 
-	// create the HTTP server as a variable so we can shut it down gracefully
 	server := &http.Server{
-		Addr:    ":8080",
-		Handler: handler,
-
-		// timeouts prevent slow or malicious clients from
-		// holding connections open and exhausting server resources
+		Addr:         ":8080",
+		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// launch the server in a goroutine so it doesn't block
-	// the graceful shutdown logic below
 	go func() {
-		fmt.Println("StreamPulse backend running on :8080")
+		slog.Info("server started", "addr", ":8080")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			slog.Error("server error", "err", err)
+			os.Exit(1)
 		}
 	}()
 
-	// graceful shutdown setup
-	// make a channel that receives OS signals
+	// graceful shutdown
 	quit := make(chan os.Signal, 1)
-
-	// tell Go to forward Ctrl+C (SIGINT) and system stop (SIGTERM) into that channel
-	// SIGTERM is what AWS ECS sends when it wants to stop your container
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	// block here doing nothing until a signal arrives
 	<-quit
-	fmt.Println("shutdown signal received — draining connections...")
 
-	// give in-flight requests up to 10 seconds to finish
-	// after that, force close everything
+	slog.Info("shutdown signal received — draining connections")
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
+		slog.Error("forced shutdown", "err", err)
+		os.Exit(1)
 	}
 
-	fmt.Println("StreamPulse stopped cleanly")
+	slog.Info("StreamPulse stopped cleanly")
 }

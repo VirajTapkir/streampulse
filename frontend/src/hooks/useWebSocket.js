@@ -1,24 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
-// useWebSocket connects to the Go backend WebSocket server
-// and returns a stream of messages that components can react to
 export function useWebSocket(url) {
   const [lastMessage, setLastMessage] = useState(null);
   const [connected, setConnected]     = useState(false);
-  const wsRef = useRef(null);
+  const wsRef       = useRef(null);
+  const retryCount  = useRef(0);
+  const retryTimer  = useRef(null);
 
-  useEffect(() => {
-    // create the WebSocket connection when the component mounts
+  const connect = useCallback(() => {
+    // clean up any existing connection before creating a new one
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
       console.log("WebSocket connected");
       setConnected(true);
+      // reset retry count on successful connection
+      retryCount.current = 0;
     };
 
     ws.onmessage = (event) => {
-      // parse the JSON and pass it to whoever is listening
       try {
         const data = JSON.parse(event.data);
         setLastMessage(data);
@@ -28,17 +33,36 @@ export function useWebSocket(url) {
     };
 
     ws.onclose = () => {
-      console.log("WebSocket disconnected");
       setConnected(false);
+      console.log("WebSocket disconnected — will retry...");
+
+      // exponential backoff — wait longer after each failed attempt
+      // 1s, 2s, 4s, 8s, 16s, capped at 30s
+      const delay = Math.min(1000 * 2 ** retryCount.current, 30000);
+      retryCount.current += 1;
+
+      console.log(`retrying in ${delay / 1000}s (attempt ${retryCount.current})`);
+
+      // schedule the next connection attempt
+      retryTimer.current = setTimeout(connect, delay);
     };
 
     ws.onerror = (err) => {
       console.error("WebSocket error", err);
+      // onclose fires automatically after onerror
+      // so reconnection is handled there
     };
-
-    // cleanup — close the connection when the component unmounts
-    return () => ws.close();
   }, [url]);
+
+  useEffect(() => {
+    connect();
+
+    // cleanup — cancel any pending retry and close the connection
+    return () => {
+      clearTimeout(retryTimer.current);
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, [connect]);
 
   return { lastMessage, connected };
 }

@@ -1,6 +1,6 @@
 module github.com/VirajTapkir/streampulse
 
-go 1.26.1
+go 1.22
 
 require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect

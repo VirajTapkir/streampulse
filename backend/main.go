@@ -28,8 +28,7 @@ func main() {
 
 	// load .env
 	if err := godotenv.Load(); err != nil {
-		slog.Error("failed to load .env file", "err", err)
-		os.Exit(1)
+		slog.Info("no .env file found — using environment variables")
 	}
 
 	// connect to PostgreSQL

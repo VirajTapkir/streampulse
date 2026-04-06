@@ -64,5 +64,5 @@ export function useWebSocket(url) {
     };
   }, [connect]);
 
-  return { lastMessage, connected, connecting, retryDelay };
+  return { lastMessage, connected, connecting, retryDelay, retryCount: retryCount.current };
 }

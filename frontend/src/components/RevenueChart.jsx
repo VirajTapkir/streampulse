@@ -45,7 +45,16 @@ export default function RevenueChart({ lastMessage }) {
             tick={{ fill: "#a6adc8", fontSize: 11 }}
             interval="preserveStartEnd"
           />
-          <YAxis tick={{ fill: "#a6adc8", fontSize: 11 }}/>
+          <YAxis
+            tick={{ fill: "#a6adc8", fontSize: 11 }}
+            label={{
+                value: "USD $",
+                angle: -90,
+                position: "insideLeft",
+                fill: "#6c7086",
+                fontSize: 11,
+            }}
+          />
           <Tooltip
             contentStyle={{ background: "#313244", border: "none", borderRadius: 8 }}
             labelStyle={{ color: "#cdd6f4" }}

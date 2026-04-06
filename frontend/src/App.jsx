@@ -6,7 +6,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 
 export default function App() {
   // single WebSocket connection shared across all four panels
-  const { lastMessage, connected, connecting, retryDelay } = useWebSocket("ws://localhost:8080/ws");
+  const { lastMessage, connected, connecting, retryDelay, retryCount } = useWebSocket("ws://localhost:8080/ws");
 
   return (
     <div style={styles.page}>
@@ -22,24 +22,24 @@ export default function App() {
       {/* disconnected banner — shown when backend goes down */}
       {!connecting && !connected && (
         <div style={{ ...styles.banner, ...styles.errorBanner }}>
-          ⚠ Backend unavailable — retrying in {retryDelay}s...
+            ⚠ Backend unavailable — retrying in {retryDelay}s (attempt {retryCount})
         </div>
       )}
 
       {/* header */}
       <div style={styles.header}>
         <h1 style={styles.logo}>StreamPulse</h1>
-        <div style={{
-          ...styles.status,
-          background: connected ? "#a6e3a1" : "#f38ba8",
-        }}>
-          {connected ? "Live" : "Disconnected"}
-        </div>
+        {connected && (
+          <div style={{ ...styles.status, background: "#a6e3a1" }}>
+              Live
+          </div>
+        )}
       </div>
 
       {/* top row — momentum score takes full width */}
       <div style={styles.topRow}>
-        <MomentumScore lastMessage={lastMessage}/>
+        <MomentumScore lastMessage={lastMessage} connected={connected}/>
+
       </div>
 
       {/* middle row — revenue chart full width */}

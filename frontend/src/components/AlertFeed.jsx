@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 // AlertFeed shows a live scrolling list of incoming events
 // each new event pops in at the top of the list
 export default function AlertFeed({ lastMessage }) {
-  const [alerts, setAlerts] = useState([]);
+  const [alerts, setAlerts]   = useState([]);
+  const [lastSeen, setLastSeen] = useState(null);
 
   useEffect(() => {
     // only process sub/bits/donation events, not momentum
@@ -18,6 +19,8 @@ export default function AlertFeed({ lastMessage }) {
 
     // add new alert to the top, keep only the last 20
     setAlerts((prev) => [newAlert, ...prev].slice(0, 20));
+    setLastSeen(new Date().toLocaleTimeString());
+
   }, [lastMessage]);
 
   // pick an emoji based on event type so alerts are easy to scan
@@ -32,7 +35,11 @@ export default function AlertFeed({ lastMessage }) {
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Live Alerts</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h2 style={{ ...styles.title, marginBottom: 0 }}>Live Alerts</h2>
+        {lastSeen && <span style={{ color: "#6c7086", fontSize: 11 }}>last event {lastSeen}</span>}
+      </div>
+
       {alerts.length === 0 && (
         <p style={styles.empty}>Waiting for events...</p>
       )}

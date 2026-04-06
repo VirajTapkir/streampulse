@@ -2,15 +2,27 @@ import { useEffect, useState } from "react";
 
 // MomentumScore displays the live engagement score
 // it updates every 5 seconds when a momentum message arrives
-export default function MomentumScore({ lastMessage }) {
-  const [score, setScore]   = useState(null);
-  const [detail, setDetail] = useState(null);
+export default function MomentumScore({ lastMessage, connected }) {
+  const [score, setScore]     = useState(null);
+  const [detail, setDetail]   = useState(null);
+  const [lastSeen, setLastSeen] = useState(null);
 
   useEffect(() => {
-    if (!lastMessage || lastMessage.type !== "momentum") return;
-    setScore(lastMessage.payload.score.toFixed(1));
-    setDetail(lastMessage.payload);
+      if (!lastMessage || lastMessage.type !== "momentum") return;
+      setScore(lastMessage.payload.score.toFixed(1));
+      setDetail(lastMessage.payload);
+      setLastSeen(new Date().toLocaleTimeString());
   }, [lastMessage]);
+
+  // clear stale data when disconnected so we never show old values as live
+  useEffect(() => {
+      if (!connected) {
+          setScore(null);
+          setDetail(null);
+          setLastSeen(null);
+      }
+  }, [connected]);
+
 
   // colour the score based on how high it is
   const scoreColour =
@@ -41,7 +53,9 @@ export default function MomentumScore({ lastMessage }) {
           </div>
         </div>
       )}
-      <p style={styles.hint}>Updates every 5 seconds</p>
+      <p style={styles.hint}>
+        {lastSeen ? `Last updated ${lastSeen}` : "Updates every 5 seconds"}
+      </p>
     </div>
   );
 }

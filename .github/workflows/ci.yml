@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # ── backend: test + build ──────────────────────────────────────────
+  backend:
+    name: Backend — test and build
+    runs-on: ubuntu-latest
+
+
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER:     postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB:       streampulse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST:     localhost
+      DB_PORT:     5432
+      DB_USER:     postgres
+      DB_PASSWORD: testpassword
+      DB_NAME:     streampulse
+      REDIS_ADDR:  localhost:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Run database schema
+        run: |
+          psql -h localhost -U postgres -d streampulse -f backend/db/schema.sql
+        env:
+          PGPASSWORD: testpassword
+
+      - name: Run tests
+        working-directory: backend
+        run: go test ./... -v
+
+      - name: Build binary
+        working-directory: backend
+        run: go build -o streampulse .
+
+  # ── frontend: build ────────────────────────────────────────────────
+  frontend:
+    name: Frontend — build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Build React app
+        working-directory: frontend
+        run: npm run build

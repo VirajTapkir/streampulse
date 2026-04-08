@@ -6,7 +6,7 @@ through an interactive dashboard.
 
 ![Live](https://img.shields.io/badge/status-live-brightgreen)
 ![Go](https://img.shields.io/badge/backend-Go-00ADD8)
-![CI](https://github.com/VirajTapkir/streampulse/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/VirajTapkir/streampulse/actions/workflows/ci.yml/badge.svg?branch=main)
 ![React](https://img.shields.io/badge/frontend-React-61DAFB)
 ![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-336791)
 ![Redis](https://img.shields.io/badge/cache-Redis-DC382D)

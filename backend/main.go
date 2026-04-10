@@ -68,7 +68,8 @@ func main() {
 	})
 	mux.HandleFunc("/ws", hub.ServeWS)
 
-	handler := middleware.CORS(mux)
+	handler := middleware.CORS(middleware.RateLimit(mux))
+
 
 	server := &http.Server{
 		Addr:         ":8080",

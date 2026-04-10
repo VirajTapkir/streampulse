@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
-	"time"
+	// "time"
 
 	"github.com/gorilla/websocket"
 	"github.com/VirajTapkir/streampulse/db"
@@ -128,12 +128,8 @@ func (h *Hub) ProcessEvents(eventChan chan events.Event) {
 			"amount",   evt.Amount,
 		)
 
-		payload, err := json.Marshal(map[string]interface{}{
-			"type":      evt.Type,
-			"username":  evt.Username,
-			"amount":    evt.Amount,
-			"timestamp": evt.Timestamp.Format(time.RFC3339),
-		})
+		payload, err := json.Marshal(evt.TwitchPayload)
+
 		if err != nil {
 			slog.Error("failed to marshal event", "err", err)
 			continue

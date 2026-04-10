@@ -1,48 +1,56 @@
 package events
 
 import (
+	"fmt"
 	"math/rand"
 	"time"
 )
 
-// Event represents a single Twitch-style monetization event
 type Event struct {
-	Type      string  // "sub", "bits", or "donation"
-	Username  string  // who triggered the event
-	Amount    float64 // dollar value
+	Type      string
+	Username  string
+	Amount    float64
 	Timestamp time.Time
+	
+	TwitchPayload map[string]interface{}
 }
 
-// eventTypes is the list of possible events we randomly pick from
-var eventTypes = []string{"sub", "bits", "donation"}
+var subTiers = []string{"1000", "2000", "3000"}
 
-// usernames is a pool of fake usernames to make events feel realistic
 var usernames = []string{
 	"xX_gamer_Xx", "streamfan99", "nightowl42",
 	"coolviewer", "hyperchatter", "lurker2000",
 }
 
-// StartEventQueue launches a goroutine that sends a fake event
-// every 1-3 seconds into the returned channel
+var displayNames = map[string]string{
+	"xX_gamer_Xx":  "xX_gamer_Xx",
+	"streamfan99":  "StreamFan99",
+	"nightowl42":   "NightOwl42",
+	"coolviewer":   "CoolViewer",
+	"hyperchatter": "HyperChatter",
+	"lurker2000":   "Lurker2000",
+}
+
 func StartEventQueue() chan Event {
-	// make a buffered channel that can hold up to 100 events
-	// without blocking if nothing is reading from it yet
 	eventChan := make(chan Event, 100)
 
 	go func() {
 		for {
-			// pick a random event type and username
-			evt := Event{
-				Type:      eventTypes[rand.Intn(len(eventTypes))],
-				Username:  usernames[rand.Intn(len(usernames))],
-				Amount:    randomAmount(),
-				Timestamp: time.Now(),
+			// randomly pick which type of event to generate
+			n := rand.Intn(3)
+			var evt Event
+
+			switch n {
+			case 0:
+				evt = generateSubEvent()
+			case 1:
+				evt = generateCheerEvent()
+			case 2:
+				evt = generateDonationEvent()
 			}
 
-			// send the event into the channel
 			eventChan <- evt
 
-			// wait between 1 and 3 seconds before the next event
 			delay := time.Duration(1+rand.Intn(3)) * time.Second
 			time.Sleep(delay)
 		}
@@ -51,9 +59,149 @@ func StartEventQueue() chan Event {
 	return eventChan
 }
 
-// randomAmount returns a realistic dollar amount based on event type
-// we call this separately so the logic is easy to read
-func randomAmount() float64 {
-	amounts := []float64{4.99, 9.99, 24.99, 100.00, 5.00, 10.00}
-	return amounts[rand.Intn(len(amounts))]
+func generateSubEvent() Event {
+	username := usernames[rand.Intn(len(usernames))]
+	tier := subTiers[rand.Intn(len(subTiers))]
+	isGift := rand.Intn(5) == 0 // 20% chance of gifted sub
+
+	amount := map[string]float64{
+		"1000": 4.99,
+		"2000": 9.99,
+		"3000": 24.99,
+	}[tier]
+
+	payload := map[string]interface{}{
+		"subscription": map[string]interface{}{
+			"id":      fmt.Sprintf("sub-%d", rand.Int()),
+			"type":    "channel.subscribe",
+			"version": "1",
+			"condition": map[string]interface{}{
+				"broadcaster_user_id": "12345678",
+			},
+		},
+		"event": map[string]interface{}{
+			"user_id":              fmt.Sprintf("%d", rand.Intn(9000000)+1000000),
+			"user_login":           username,
+			"user_name":            displayNames[username],
+			"broadcaster_user_id":  "12345678",
+			"broadcaster_user_login": "teststreamer",
+			"broadcaster_user_name": "TestStreamer",
+			"tier":                 tier,
+			"is_gift":              isGift,
+		},
+		"_meta": map[string]interface{}{
+			"type":      "sub",
+			"amount":    amount,
+			"timestamp": time.Now().Format(time.RFC3339),
+		},
+	}
+
+	return Event{
+		Type:          "sub",
+		Username:      username,
+		Amount:        amount,
+		Timestamp:     time.Now(),
+		TwitchPayload: payload,
+	}
+}
+
+func generateCheerEvent() Event {
+	username := usernames[rand.Intn(len(usernames))]
+
+	bitsOptions := []int{100, 500, 1000, 5000, 10000}
+	bits := bitsOptions[rand.Intn(len(bitsOptions))]
+
+	// Twitch pays out $0.01 per bit
+	amount := float64(bits) * 0.01
+
+	messages := []string{
+		fmt.Sprintf("PogChamp %d bits!", bits),
+		fmt.Sprintf("Keep it up! %d", bits),
+		"Great stream!",
+		fmt.Sprintf("Cheering %d bits!", bits),
+	}
+	message := messages[rand.Intn(len(messages))]
+
+	payload := map[string]interface{}{
+		"subscription": map[string]interface{}{
+			"id":      fmt.Sprintf("cheer-%d", rand.Int()),
+			"type":    "channel.cheer",
+			"version": "1",
+			"condition": map[string]interface{}{
+				"broadcaster_user_id": "12345678",
+			},
+		},
+		"event": map[string]interface{}{
+			"is_anonymous":           false,
+			"user_id":                fmt.Sprintf("%d", rand.Intn(9000000)+1000000),
+			"user_login":             username,
+			"user_name":              displayNames[username],
+			"broadcaster_user_id":    "12345678",
+			"broadcaster_user_login": "teststreamer",
+			"broadcaster_user_name":  "TestStreamer",
+			"message":                message,
+			"bits":                   bits,
+		},
+		"_meta": map[string]interface{}{
+			"type":      "bits",
+			"amount":    amount,
+			"timestamp": time.Now().Format(time.RFC3339),
+		},
+	}
+
+	return Event{
+		Type:          "bits",
+		Username:      username,
+		Amount:        amount,
+		Timestamp:     time.Now(),
+		TwitchPayload: payload,
+	}
+}
+
+func generateDonationEvent() Event {
+	username := usernames[rand.Intn(len(usernames))]
+
+	amountOptions := []int{500, 1000, 2500, 5000, 10000}
+	amountCents := amountOptions[rand.Intn(len(amountOptions))]
+	amount := float64(amountCents) / 100.0
+
+	payload := map[string]interface{}{
+		"subscription": map[string]interface{}{
+			"id":      fmt.Sprintf("donation-%d", rand.Int()),
+			"type":    "channel.charity_campaign.donate",
+			"version": "1",
+			"condition": map[string]interface{}{
+				"broadcaster_user_id": "12345678",
+			},
+		},
+		"event": map[string]interface{}{
+			"campaign_id":            fmt.Sprintf("campaign-%d", rand.Intn(1000)),
+			"user_id":                fmt.Sprintf("%d", rand.Intn(9000000)+1000000),
+			"user_login":             username,
+			"user_name":              displayNames[username],
+			"broadcaster_user_id":    "12345678",
+			"broadcaster_user_login": "teststreamer",
+			"broadcaster_user_name":  "TestStreamer",
+			"charity_name":           "StreamPulse Charity",
+			"charity_logo":           "https://streampulse.example.com/logo.png",
+			"amount": map[string]interface{}{
+				"value":          amountCents,
+				"decimal_places": 2,
+				"currency":       "USD",
+			},
+		},
+		"_meta": map[string]interface{}{
+			"type":      "donation",
+			"amount":    amount,
+			"timestamp": time.Now().Format(time.RFC3339),
+		},
+	}
+
+	return Event{
+		Type:          "donation",
+		Username:      username,
+		Amount:        amount,
+		Timestamp:     time.Now(),
+		TwitchPayload: payload,
+	}
 }

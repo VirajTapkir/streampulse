@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/VirajTapkir/streampulse/db"
 )
@@ -110,4 +111,56 @@ func GetMomentum(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(val))
+}
+func GetAnalytics(w http.ResponseWriter, r *http.Request) {
+	streamerID := "1"
+	if sid := r.URL.Query().Get("streamer_id"); sid != "" {
+		streamerID = sid
+	}
+
+	days := "7"
+	if d := r.URL.Query().Get("days"); d != "" {
+		days = d
+	}
+
+	rows, err := db.DB.Query(`
+		SELECT
+			DATE_TRUNC('day', occurred_at) AS day,
+			event_type,
+			SUM(amount)                    AS total
+		FROM earnings
+		WHERE
+			streamer_id = $1
+			AND occurred_at >= NOW() - ($2 || ' days')::INTERVAL
+		GROUP BY day, event_type
+		ORDER BY day ASC
+	`, streamerID, days)
+
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "failed to query analytics",
+		})
+		return
+	}
+	defer rows.Close()
+
+	type DailyTotal struct {
+		Day       string  `json:"day"`
+		EventType string  `json:"event_type"`
+		Total     float64 `json:"total"`
+	}
+
+	results := []DailyTotal{}
+
+	for rows.Next() {
+		var d DailyTotal
+		var day time.Time
+		if err := rows.Scan(&day, &d.EventType, &d.Total); err != nil {
+			continue
+		}
+		d.Day = day.Format("Jan 2")
+		results = append(results, d)
+	}
+
+	respondJSON(w, http.StatusOK, results)
 }

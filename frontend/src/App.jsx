@@ -4,6 +4,8 @@ import EmoteLeaderboard from "./components/EmoteLeaderboard";
 import MomentumScore    from "./components/MomentumScore";
 import { useState, useEffect } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
+import HistoricalChart  from "./components/HistoricalChart";
+
 
 export default function App() {
   const [streamerID, setStreamerID] = useState(1);
@@ -63,6 +65,8 @@ export default function App() {
       <div style={styles.midRow}>
         <RevenueChart lastMessage={lastMessage} streamerID={streamerID}/>
       </div>
+
+      <HistoricalChart streamerID={streamerID}/>
 
       <div style={styles.bottomRow}>
         <div style={styles.half}>

@@ -62,6 +62,7 @@ func main() {
 	mux.HandleFunc("/api/earnings",  api.GetEarnings)
 	mux.HandleFunc("/api/counters",  ws.GetCounters)
 	mux.HandleFunc("/api/momentum",  api.GetMomentum)
+	mux.HandleFunc("/api/analytics", api.GetAnalytics)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))

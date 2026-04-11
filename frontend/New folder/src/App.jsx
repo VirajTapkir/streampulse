@@ -6,22 +6,23 @@ import { useState, useEffect } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 
 export default function App() {
-  const [streamerID, setStreamerID] = useState(1);
-  const [streamers, setStreamers]   = useState([]);
+const [streamerID, setStreamerID] = useState(1);
+const [streamers, setStreamers]   = useState([]);
 
-  useEffect(() => {
+useEffect(() => {
     fetch("http://localhost:8080/api/streamers")
-      .then(r => r.json())
-      .then(data => setStreamers(data))
-      .catch(e => console.error("failed to load streamers", e));
-  }, []);
+        .then(r => r.json())
+        .then(data => setStreamers(data))
+        .catch(e => console.error("failed to load streamers", e));
+}, []);
 
-  const { lastMessage, connected, connecting, retryDelay, retryCount } =
+const { lastMessage, connected, connecting, retryDelay, retryCount } =
     useWebSocket(`ws://localhost:8080/ws?streamer_id=${streamerID}`);
 
   return (
     <div style={styles.page}>
 
+      {/* connecting spinner — shown on first load before WS handshake */}
       {connecting && (
         <div style={styles.banner}>
           <span style={styles.spinner}>⟳</span>
@@ -29,41 +30,65 @@ export default function App() {
         </div>
       )}
 
+      {/* disconnected banner — shown when backend goes down */}
       {!connecting && !connected && (
         <div style={{ ...styles.banner, ...styles.errorBanner }}>
-          ⚠ Backend unavailable — retrying in {retryDelay}s (attempt {retryCount})
+            ⚠ Backend unavailable — retrying in {retryDelay}s (attempt {retryCount})
         </div>
       )}
 
       {/* header */}
-      <div style={styles.header}>
-        <h1 style={styles.logo}>StreamPulse</h1>
-        <select
-          value={streamerID}
-          onChange={e => setStreamerID(Number(e.target.value))}
-          style={styles.selector}
-        >
-          {streamers.map(s => (
-            <option key={s.id} value={s.id}>
-              {s.display_name}
-            </option>
-          ))}
-        </select>
-        {connected && (
-          <div style={{ ...styles.status, background: "#a6e3a1" }}>
-            Live
-          </div>
-        )}
+      <div style={styles.header}>{/* header */}
+        <div style={styles.header}>
+            <h1 style={styles.logo}>StreamPulse</h1>
+            <select
+                value={streamerID}
+                onChange={e => setStreamerID(Number(e.target.value))}
+                style={styles.selector}
+            >
+                {streamers.map(s => (
+                    <option key={s.id} value={s.id}>
+                        {s.display_name}
+                    </option>
+                ))}
+            </select>
+            {connected && (
+                <div style={{ ...styles.status, background: "#a6e3a1" }}>
+                    Live
+                </div>
+            )}
+        </div>
+                  <h1 style={styles.logo}>StreamPulse</h1>
+                  <select
+                      value={streamerID}
+                      onChange={e => setStreamerID(Number(e.target.value))}
+                      style={styles.selector}
+                  >
+              {streamers.map(s => (
+                  <option key={s.id} value={s.id}>
+                      {s.display_name}
+                  </option>
+              ))}
+          </select>
+          {connected && (
+              <div style={{ ...styles.status, background: "#a6e3a1" }}>
+                  Live
+              </div>
+          )}
       </div>
 
+      {/* top row — momentum score takes full width */}
       <div style={styles.topRow}>
         <MomentumScore lastMessage={lastMessage} connected={connected} streamerID={streamerID}/>
+
       </div>
 
+      {/* middle row — revenue chart full width */}
       <div style={styles.midRow}>
         <RevenueChart lastMessage={lastMessage} streamerID={streamerID}/>
       </div>
 
+      {/* bottom row — alert feed and leaderboard side by side */}
       <div style={styles.bottomRow}>
         <div style={styles.half}>
           <AlertFeed lastMessage={lastMessage} streamerID={streamerID}/>
@@ -107,7 +132,7 @@ const styles = {
   topRow:    { marginBottom: 16 },
   midRow:    { marginBottom: 16 },
   bottomRow: { display: "flex", gap: 16 },
-  half:      { flex: 1, minWidth: 0 },
+  half: { flex: 1, minWidth: 0 },
   selector: {
     background:   "#313244",
     color:        "#cdd6f4",
@@ -133,8 +158,8 @@ const styles = {
     background: "#f38ba8",
   },
   spinner: {
-    display:   "inline-block",
-    animation: "spin 1s linear infinite",
-    fontSize:  18,
+    display:         "inline-block",
+    animation:       "spin 1s linear infinite",
+    fontSize:        18,
   },
 };

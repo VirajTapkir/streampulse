@@ -7,13 +7,14 @@ import (
 )
 
 type Event struct {
-	Type      string
-	Username  string
-	Amount    float64
-	Timestamp time.Time
-	
+	StreamerID    int
+	Type          string
+	Username      string
+	Amount        float64
+	Timestamp     time.Time
 	TwitchPayload map[string]interface{}
 }
+
 
 var subTiers = []string{"1000", "2000", "3000"}
 
@@ -31,12 +32,15 @@ var displayNames = map[string]string{
 	"lurker2000":   "Lurker2000",
 }
 
+var streamerIDs = []int{1, 3, 4}
+
 func StartEventQueue() chan Event {
 	eventChan := make(chan Event, 100)
 
 	go func() {
 		for {
-			// randomly pick which type of event to generate
+			streamerID := streamerIDs[rand.Intn(len(streamerIDs))]
+
 			n := rand.Intn(3)
 			var evt Event
 
@@ -49,6 +53,9 @@ func StartEventQueue() chan Event {
 				evt = generateDonationEvent()
 			}
 
+			evt.StreamerID = streamerID
+			evt.TwitchPayload["_meta"].(map[string]interface{})["streamer_id"] = streamerID
+
 			eventChan <- evt
 
 			delay := time.Duration(1+rand.Intn(3)) * time.Second
@@ -58,6 +65,7 @@ func StartEventQueue() chan Event {
 
 	return eventChan
 }
+
 
 func generateSubEvent() Event {
 	username := usernames[rand.Intn(len(usernames))]

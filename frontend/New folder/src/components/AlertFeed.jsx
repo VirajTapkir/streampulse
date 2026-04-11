@@ -7,14 +7,7 @@ export default function AlertFeed({ lastMessage, streamerID }) {
   const [lastSeen, setLastSeen] = useState(null);
 
   useEffect(() => {
-    setAlerts([]);
-    setLastSeen(null);
-  }, [streamerID]);
-
-
-  useEffect(() => {
     if (!lastMessage || lastMessage.type === "momentum") return;
-    console.log("alert filter check:", lastMessage._raw?._meta?.streamer_id, "vs streamerID:", streamerID, "type:", typeof lastMessage._raw?._meta?.streamer_id, typeof streamerID);
     if (lastMessage._raw?._meta?.streamer_id && lastMessage._raw._meta.streamer_id !== streamerID) return;
 
     const newAlert = {

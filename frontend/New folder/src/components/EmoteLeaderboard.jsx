@@ -6,10 +6,6 @@ export default function EmoteLeaderboard({ lastMessage, streamerID }) {
   const [leaderboard, setLeaderboard] = useState({});
 
   useEffect(() => {
-    setLeaderboard({});
-  }, [streamerID]);
-
-  useEffect(() => {
     if (!lastMessage || lastMessage.type === "momentum") return;
     if (lastMessage._raw?._meta?.streamer_id && lastMessage._raw._meta.streamer_id !== streamerID) return;
 

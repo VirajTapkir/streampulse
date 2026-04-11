@@ -3,21 +3,18 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/VirajTapkir/streampulse/db"
 )
 
-// respondJSON is a helper that writes any Go value as a JSON response
-// we use this in every handler so we don't repeat ourselves
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(data)
 }
 
-// GetStreamers handles GET /api/streamers
-// It reads all rows from the streamers table and returns them as JSON
 func GetStreamers(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.DB.Query("SELECT id, username, display_name, created_at FROM streamers")
 	if err != nil {
@@ -26,9 +23,8 @@ func GetStreamers(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer rows.Close() // always close rows when done to free the connection
+	defer rows.Close() 
 
-	// build a slice to hold all the results
 	type Streamer struct {
 		ID          int    `json:"id"`
 		Username    string `json:"username"`
@@ -40,7 +36,7 @@ func GetStreamers(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var s Streamer
-		var createdAt interface{} // we read this but don't need it in the response
+		var createdAt interface{} 
 		if err := rows.Scan(&s.ID, &s.Username, &s.DisplayName, &createdAt); err != nil {
 			continue
 		}
@@ -50,12 +46,17 @@ func GetStreamers(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, streamers)
 }
 
-// GetEarnings handles GET /api/earnings
-// It reads all rows from the earnings table and returns them as JSON
 func GetEarnings(w http.ResponseWriter, r *http.Request) {
+	streamerID := "1"
+	if sid := r.URL.Query().Get("streamer_id"); sid != "" {
+		streamerID = sid
+	}
+
 	rows, err := db.DB.Query(
-		"SELECT id, streamer_id, event_type, amount, occurred_at FROM earnings ORDER BY occurred_at DESC LIMIT 50",
+		"SELECT id, streamer_id, event_type, amount, occurred_at FROM earnings WHERE streamer_id = $1 ORDER BY occurred_at DESC LIMIT 50",
+		streamerID,
 	)
+
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{
 			"error": "failed to query earnings",
@@ -85,14 +86,18 @@ func GetEarnings(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, earnings)
 }
-// GetMomentum handles GET /api/momentum
-// returns the latest momentum score stored in Redis
+
 func GetMomentum(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
-	val, err := db.RDB.Get(ctx, "momentum:score").Result()
+	streamerID := "1"
+	if sid := r.URL.Query().Get("streamer_id"); sid != "" {
+		streamerID = sid
+	}
+
+	val, err := db.RDB.Get(ctx, fmt.Sprintf("streamer:%s:momentum:score", streamerID)).Result()
+
 	if err != nil {
-		// score hasn't been computed yet — return a zero score
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"score":       0,
 			"sub_rate":    0,
@@ -103,7 +108,6 @@ func GetMomentum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// the score is already JSON — write it directly
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(val))
 }

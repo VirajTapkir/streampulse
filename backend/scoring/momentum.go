@@ -3,11 +3,13 @@ package scoring
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/VirajTapkir/streampulse/db"
 )
+
 
 type MomentumScore struct {
 	Score       float64 `json:"score"`
@@ -18,55 +20,69 @@ type MomentumScore struct {
 }
 
 func StartMomentumTicker(broadcast chan<- []byte) {
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
+	// run a separate ticker for each streamer
+	streamerIDs := []int{1, 3, 4}
 
-		for range ticker.C {
-			score, err := Compute()
-			if err != nil {
-				slog.Error("momentum compute failed", "err", err)
-				continue
-			}
-
-			slog.Info("momentum computed",
-				"score",        score.Score,
-				"sub_rate",     score.SubRate,
-				"bits_per_min", score.BitsPerMin,
-				"chat_density", score.ChatDensity,
-			)
-
-			payload, err := json.Marshal(score)
-			if err != nil {
-				slog.Error("failed to marshal momentum score", "err", err)
-				continue
-			}
-
-			wrapped, _ := json.Marshal(map[string]interface{}{
-				"type":    "momentum",
-				"payload": score,
-			})
-
-			db.RDB.Set(context.Background(), "momentum:score", payload, 10*time.Second)
-			broadcast <- wrapped
-		}
-	}()
+	for _, id := range streamerIDs {
+		go runTickerForStreamer(id, broadcast)
+	}
 }
 
-func Compute() (MomentumScore, error) {
+func runTickerForStreamer(streamerID int, broadcast chan<- []byte) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		score, err := Compute(streamerID)
+		if err != nil {
+			slog.Error("momentum compute failed", "streamer_id", streamerID, "err", err)
+			continue
+		}
+
+		slog.Info("momentum computed",
+			"streamer_id",  streamerID,
+			"score",        score.Score,
+			"sub_rate",     score.SubRate,
+			"bits_per_min", score.BitsPerMin,
+			"chat_density", score.ChatDensity,
+		)
+
+		payload, err := json.Marshal(score)
+		if err != nil {
+			continue
+		}
+
+		wrapped, _ := json.Marshal(map[string]interface{}{
+			"type":    "momentum",
+			"payload": score,
+			"_meta":   map[string]interface{}{"streamer_id": streamerID},
+		})
+
+		db.RDB.Set(context.Background(),
+			fmt.Sprintf("streamer:%d:momentum:score", streamerID),
+			payload, 10*time.Second)
+
+		broadcast <- wrapped
+	}
+}
+
+
+func Compute(streamerID int) (MomentumScore, error) {
 	ctx := context.Background()
 
-	subs, err := db.RDB.Get(ctx, "counter:sub").Float64()
+	prefix := fmt.Sprintf("streamer:%d", streamerID)
+
+	subs, err := db.RDB.Get(ctx, prefix+":counter:sub").Float64()
 	if err != nil {
 		subs = 0
 	}
 
-	bits, err := db.RDB.Get(ctx, "counter:bits").Float64()
+	bits, err := db.RDB.Get(ctx, prefix+":counter:bits").Float64()
 	if err != nil {
 		bits = 0
 	}
 
-	donations, err := db.RDB.Get(ctx, "counter:donation").Float64()
+	donations, err := db.RDB.Get(ctx, prefix+":counter:donation").Float64()
 	if err != nil {
 		donations = 0
 	}
@@ -77,9 +93,9 @@ func Compute() (MomentumScore, error) {
 
 	score := (subRate * 0.5) + (bitsPerMin * 0.3) + (chatDensity * 0.2)
 
-	db.RDB.Set(ctx, "counter:sub",      0, 0)
-	db.RDB.Set(ctx, "counter:bits",     0, 0)
-	db.RDB.Set(ctx, "counter:donation", 0, 0)
+	db.RDB.Set(ctx, prefix+":counter:sub",      0, 0)
+	db.RDB.Set(ctx, prefix+":counter:bits",     0, 0)
+	db.RDB.Set(ctx, prefix+":counter:donation", 0, 0)
 
 	return MomentumScore{
 		Score:       score,

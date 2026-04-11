@@ -7,14 +7,8 @@ import {
 // RevenueChart shows a real-time line graph of earnings over time
 // each new event adds a data point to the chart
 export default function RevenueChart({ lastMessage, streamerID }) {
-    const [data, setData] = useState([]);
-  const [total, setTotal] = useState(0);
-
-  useEffect(() => {
-    setData([]);
-    setTotal(0);
-  }, [streamerID]);
-
+  const [data, setData]         = useState([]);
+  const [total, setTotal]       = useState(0);
 
   useEffect(() => {
     if (!lastMessage || lastMessage.type === "momentum") return;

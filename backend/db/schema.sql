@@ -16,3 +16,12 @@ CREATE TABLE IF NOT EXISTS earnings (
 INSERT INTO streamers (username, display_name)
 VALUES ('teststreamer', 'Test Streamer')
 ON CONFLICT DO NOTHING;
+
+INSERT INTO streamers (username, display_name)
+VALUES ('prostreamer', 'Pro Streamer')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO streamers (username, display_name)
+VALUES ('newstreamer', 'New Streamer')
+ON CONFLICT DO NOTHING;
+

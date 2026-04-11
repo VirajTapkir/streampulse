@@ -20,10 +20,10 @@ var upgrader = websocket.Upgrader{
 }
 
 type Client struct {
-	conn *websocket.Conn
-	send chan []byte
+	conn       *websocket.Conn
+	send       chan []byte
+	streamerID int 
 }
-
 type Hub struct {
 	clients    map[*Client]bool
 	broadcast  chan []byte
@@ -63,6 +63,18 @@ func (h *Hub) Run() {
 		case message := <-h.broadcast:
 			h.mu.Lock()
 			for client := range h.clients {
+				// only send to clients watching this streamer
+				// parse streamer_id from the message to filter correctly
+				var payload map[string]interface{}
+				if err := json.Unmarshal(message, &payload); err == nil {
+					if meta, ok := payload["_meta"].(map[string]interface{}); ok {
+						if sid, ok := meta["streamer_id"].(float64); ok {
+							if client.streamerID != int(sid) {
+								continue // skip clients watching a different streamer
+							}
+						}
+					}
+				}
 				select {
 				case client.send <- message:
 				default:
@@ -72,6 +84,7 @@ func (h *Hub) Run() {
 				}
 			}
 			h.mu.Unlock()
+
 		}
 	}
 }
@@ -93,10 +106,20 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &Client{
-		conn: conn,
-		send: make(chan []byte, 256),
+	streamerID := 1
+	if sid := r.URL.Query().Get("streamer_id"); sid != "" {
+		if id, err := fmt.Sscanf(sid, "%d", &streamerID); err != nil || id == 0 {
+			streamerID = 1
+		}
 	}
+
+	client := &Client{
+		conn:       conn,
+		send:       make(chan []byte, 256),
+		streamerID: streamerID,
+	}
+
+	slog.Info("client connected", "streamer_id", streamerID)
 
 	h.register <- client
 	go client.writePump()
@@ -119,8 +142,11 @@ func (h *Hub) ProcessEvents(eventChan chan events.Event) {
 			slog.Error("failed to save earning", "event_type", evt.Type, "err", err)
 		}
 
-		key := fmt.Sprintf("counter:%s", evt.Type)
+		// namespace Redis keys by streamer ID so each streamer's
+		// counters are completely independent
+		key := fmt.Sprintf("streamer:%d:counter:%s", evt.StreamerID, evt.Type)
 		db.RDB.Incr(context.Background(), key)
+
 
 		slog.Info("event processed",
 			"type",     evt.Type,
@@ -142,17 +168,24 @@ func (h *Hub) ProcessEvents(eventChan chan events.Event) {
 func saveEarning(evt events.Event) error {
 	_, err := db.DB.Exec(
 		`INSERT INTO earnings (streamer_id, event_type, amount) VALUES ($1, $2, $3)`,
-		1, evt.Type, evt.Amount,
+		evt.StreamerID, evt.Type, evt.Amount,
 	)
 	return err
 }
 
+
 func GetCounters(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
-	subs, _      := db.RDB.Get(ctx, "counter:sub").Int()
-	bits, _      := db.RDB.Get(ctx, "counter:bits").Int()
-	donations, _ := db.RDB.Get(ctx, "counter:donation").Int()
+	// read streamer_id from query param — default to 1
+	streamerID := "1"
+	if sid := r.URL.Query().Get("streamer_id"); sid != "" {
+		streamerID = sid
+	}
+
+	subs, _      := db.RDB.Get(ctx, fmt.Sprintf("streamer:%s:counter:sub", streamerID)).Int()
+	bits, _      := db.RDB.Get(ctx, fmt.Sprintf("streamer:%s:counter:bits", streamerID)).Int()
+	donations, _ := db.RDB.Get(ctx, fmt.Sprintf("streamer:%s:counter:donation", streamerID)).Int()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int{
@@ -161,6 +194,7 @@ func GetCounters(w http.ResponseWriter, r *http.Request) {
 		"donations": donations,
 	})
 }
+
 
 func GetDB() *sql.DB {
 	return db.DB

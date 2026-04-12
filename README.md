@@ -4,12 +4,12 @@ A full-stack creator analytics platform that simulates Twitch's streamer
 monetization event pipeline and surfaces real-time engagement insights
 through an interactive dashboard.
 
-![Live](https://img.shields.io/badge/status-live-brightgreen)
-![Go](https://img.shields.io/badge/backend-Go-00ADD8)
 ![CI](https://github.com/VirajTapkir/streampulse/actions/workflows/ci.yml/badge.svg?branch=main)
+![Go](https://img.shields.io/badge/backend-Go-00ADD8)
 ![React](https://img.shields.io/badge/frontend-React-61DAFB)
 ![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-336791)
 ![Redis](https://img.shields.io/badge/cache-Redis-DC382D)
+![Docker](https://img.shields.io/badge/containers-Docker-2496ED)
 
 ---
 
@@ -17,14 +17,20 @@ through an interactive dashboard.
 
 - Streams live subscription, bits, and donation events to connected dashboards
   via WebSocket — no polling, sub-100ms delivery
+- Simulates real Twitch EventSub payloads — `channel.subscribe`,
+  `channel.cheer`, and `channel.charity_campaign.donate` event schemas
+- Supports multiple streamers — each streamer gets their own independent
+  event stream and Redis namespace
 - Aggregates live viewer metrics in Redis and persists earnings history in
   PostgreSQL
 - Computes a **Stream Momentum Score** — an explainable engagement signal built
   from sub rate, bits/min, and chat density — updated every 5 seconds
-- Provides a React dashboard with a live alert feed, emote leaderboard, and
-  revenue chart
+- Fires configurable alerts when momentum drops below a user-defined threshold
+- Provides a React dashboard with a live alert feed, emote leaderboard,
+  real-time revenue chart, and 7-day historical revenue breakdown
 - Auto-reconnects to the backend with exponential backoff if the connection drops
-- Structured logging throughout the backend with Go's slog package
+- Structured logging throughout the backend with Go's `slog` package
+- Rate limiting — token bucket algorithm, 10 requests/sec per IP with burst of 20
 - Graceful shutdown — drains in-flight requests before exiting on SIGTERM
 
 ---
@@ -58,9 +64,10 @@ through an interactive dashboard.
 │  ┌───────────┐ ┌──────────────┐ ┌────────────────┐  │
 │  │ Alert Feed│ │Revenue Chart │ │ Emote Board    │  │
 │  └───────────┘ └──────────────┘ └────────────────┘  │
-│  ┌─────────────────────────────────────────────────┐ │
-│  │         Stream Momentum Score (5s updates)      │ │
-│  └─────────────────────────────────────────────────┘ │
+│  ┌──────────────────┐ ┌───────────────────────────┐  │
+│  │ Momentum Score   │ │ 7-day Revenue Breakdown   │  │
+│  │ + alert system   │ │ (bar chart by event type) │  │
+│  └──────────────────┘ └───────────────────────────┘  │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -68,44 +75,55 @@ through an interactive dashboard.
 
 ## Tech stack
 
-| Layer      | Technology                          |
-|------------|-------------------------------------|
-| Frontend   | React, Recharts, WebSocket API      |
-| Backend    | Go (net/http, gorilla/websocket)    |
-| Cache      | Redis (ElastiCache on AWS)          |
-| Database   | PostgreSQL                          |
-| Logging    | Go slog (structured, key-value)     |
-| Testing    | Go testing package                  |
-| Infra      | AWS ECS, S3, CloudFront             |
-| Simulation | Mock event queue (Go channels)      |
+| Layer        | Technology                              |
+|--------------|-----------------------------------------|
+| Frontend     | React, Recharts, WebSocket API          |
+| Backend      | Go (net/http, gorilla/websocket)        |
+| Cache        | Redis 7                                 |
+| Database     | PostgreSQL 16                           |
+| Logging      | Go slog (structured, key-value)         |
+| Testing      | Go testing package                      |
+| Rate limiting| Token bucket (golang.org/x/time/rate)   |
+| Containers   | Docker, Docker Compose                  |
+| CI/CD        | GitHub Actions                          |
+| Simulation   | Mock Twitch EventSub event queue        |
 
 ---
 
 ## Stream Momentum Score
 
-The momentum score is a weighted engagement signal computed every 5 seconds:
+The momentum score is a weighted engagement signal computed every 5 seconds
+per streamer:
 
 ```
 score = (subRate × 0.5) + (bitsPerMin × 0.3) + (chatDensity × 0.2)
 ```
 
-Where each component is a per-minute rate derived from a 5-second
-sampling window. The weights reflect the relative revenue signal strength
-of each event type — subscriptions carry the most weight, chat activity
-the least. Counters reset after each computation to prevent accumulation.
+Where each component is a per-minute rate derived from a 5-second sampling
+window. The weights reflect the relative revenue signal strength of each
+event type — subscriptions carry the most weight, chat activity the least.
+Counters reset after each computation to prevent accumulation.
+
+Configurable alerting thresholds trigger warning and critical banners on
+the dashboard when engagement drops below a user-defined level.
 
 ---
 
 ## API endpoints
 
-| Method | Endpoint          | Description                        |
-|--------|-------------------|------------------------------------|
-| GET    | `/health`         | Health check — used by AWS ECS     |
-| GET    | `/api/streamers`  | List all streamers                 |
-| GET    | `/api/earnings`   | Last 50 earnings events            |
-| GET    | `/api/counters`   | Live Redis event counters          |
-| GET    | `/api/momentum`   | Latest momentum score from Redis   |
-| WS     | `/ws`             | WebSocket — real-time event stream |
+| Method | Endpoint            | Description                              |
+|--------|---------------------|------------------------------------------|
+| GET    | `/health`           | Health check                             |
+| GET    | `/api/streamers`    | List all streamers                       |
+| GET    | `/api/earnings`     | Last 50 earnings events per streamer     |
+| GET    | `/api/counters`     | Live Redis event counters per streamer   |
+| GET    | `/api/momentum`     | Latest momentum score from Redis         |
+| GET    | `/api/analytics`    | 7-day daily revenue breakdown            |
+| WS     | `/ws`               | WebSocket — real-time event stream       |
+
+All endpoints that return per-streamer data accept a `?streamer_id=` query
+parameter. The WebSocket endpoint accepts `?streamer_id=` to subscribe to
+a specific streamer's event stream.
 
 ---
 
@@ -113,37 +131,38 @@ the least. Counters reset after each computation to prevent accumulation.
 
 ### Prerequisites
 
-- [Go 1.21+](https://go.dev/dl/)
+- [Go 1.22+](https://go.dev/dl/)
 - [Node.js 18+](https://nodejs.org/)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for Redis)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for Redis + one-command startup)
 - [PostgreSQL 16](https://www.postgresql.org/download/)
 
-### 1 — Clone the repo
+### Option A — Docker Compose (recommended)
+
+One command starts all four services:
 
 ```bash
 git clone https://github.com/VirajTapkir/streampulse.git
 cd streampulse
+cp .env.example .env   # then fill in your DB_PASSWORD
+docker-compose up --build
 ```
 
-### 2 — Start Redis
+Visit `http://localhost:3000` — the dashboard is live.
 
+### Option B — Manual setup
+
+**1 — Start Redis via Docker:**
 ```bash
 docker run -d --name streampulse-redis -p 6379:6379 redis:7
 ```
 
-### 3 — Set up PostgreSQL
-
-Create the database and run the schema:
-
+**2 — Set up PostgreSQL:**
 ```bash
 psql -U postgres -c "CREATE DATABASE streampulse;"
 psql -U postgres -d streampulse -f backend/db/schema.sql
 ```
 
-### 4 — Configure environment
-
-Create `backend/.env`:
-
+**3 — Configure environment — create `backend/.env`:**
 ```env
 DB_HOST=localhost
 DB_PORT=5432
@@ -155,25 +174,13 @@ REDIS_ADDR=localhost:6379
 SERVER_PORT=8080
 ```
 
-### 5 — Start the backend
-
+**4 — Start the backend:**
 ```bash
 cd backend
 go run main.go
 ```
 
-You should see:
-
-```
-time=... level=INFO msg="postgres connected" database=streampulse
-time=... level=INFO msg="redis connected" addr=localhost:6379
-time=... level=INFO msg="server started" addr=:8080
-```
-
-### 6 — Start the frontend
-
-In a new terminal:
-
+**5 — Start the frontend:**
 ```bash
 cd frontend
 npm install
@@ -213,33 +220,37 @@ ok  github.com/VirajTapkir/streampulse/scoring
 
 ```
 streampulse/
+├── docker-compose.yml              # starts all four services
+├── .env.example                    # copy to .env and fill in secrets
 ├── backend/
-│   ├── main.go               # entry point — wires all components together
+│   ├── main.go                     # entry point — wires all components
 │   ├── api/
-│   │   └── handlers.go       # REST API handlers
+│   │   └── handlers.go             # REST API handlers
 │   ├── db/
-│   │   ├── postgres.go       # PostgreSQL connection pool
-│   │   ├── redis.go          # Redis client
-│   │   └── schema.sql        # table definitions + seed data
+│   │   ├── postgres.go             # PostgreSQL connection pool
+│   │   ├── redis.go                # Redis client
+│   │   └── schema.sql              # table definitions + seed data
 │   ├── events/
-│   │   └── queue.go          # mock Twitch Pub/Sub event generator
+│   │   └── queue.go                # mock Twitch EventSub event generator
 │   ├── middleware/
-│   │   └── cors.go           # CORS middleware
+│   │   ├── cors.go                 # CORS middleware
+│   │   └── ratelimit.go            # token bucket rate limiter
 │   ├── scoring/
-│   │   ├── momentum.go       # momentum score computation
-│   │   └── momentum_test.go  # unit tests
+│   │   ├── momentum.go             # momentum score computation
+│   │   └── momentum_test.go        # unit tests
 │   └── ws/
-│       └── hub.go            # WebSocket hub — client management + fan-out
+│       └── hub.go                  # WebSocket hub + fan-out
 └── frontend/
     └── src/
-        ├── App.jsx                    # root component + layout
+        ├── App.jsx                         # root component + layout
         ├── hooks/
-        │   └── useWebSocket.js        # WS hook with auto-reconnect
+        │   └── useWebSocket.js             # WS hook with auto-reconnect
         └── components/
-            ├── AlertFeed.jsx          # live event feed
-            ├── RevenueChart.jsx       # Recharts line graph
-            ├── EmoteLeaderboard.jsx   # top chatters board
-            └── MomentumScore.jsx      # engagement score display
+            ├── AlertFeed.jsx               # live event feed
+            ├── RevenueChart.jsx            # real-time revenue line chart
+            ├── EmoteLeaderboard.jsx        # top chatters leaderboard
+            ├── MomentumScore.jsx           # engagement score + alerting
+            └── HistoricalChart.jsx         # 7-day revenue bar chart
 ```
 
 ---
@@ -263,6 +274,14 @@ The core technical decisions reflect real production constraints:
   for 1000 concurrent users means 1000 requests/second; a single
   WebSocket connection per user means 0 polling requests and sub-100ms
   delivery
+- **Token bucket rate limiting** — allows legitimate burst traffic
+  (a browser firing multiple requests on page load) while protecting
+  against abusive clients, without the thundering herd problem of
+  fixed-window limiting
+- **Per-streamer Redis namespacing** — prefixing all keys with
+  `streamer:{id}:` gives each streamer completely independent counters
+  and momentum scores with zero cross-contamination, at no extra
+  infrastructure cost
 - **Weighted momentum score** — a single explainable metric is more
   actionable for a creator than three separate counters. The weights
   were chosen to reflect Twitch's public revenue split between
